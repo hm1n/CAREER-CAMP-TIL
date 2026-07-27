@@ -1,78 +1,79 @@
 ---
 name: notion-til-upload
-description: Fetch today's (or a specified date's) TIL entry from the user's Notion "TIL" database and upload it to this repo as a markdown file, following the fixed folder/file/commit conventions below. Trigger this whenever the user says things like "TIL 업로드", "오늘 TIL 올려줘", "노션 TIL 커밋", "TIL 깃허브에 올려줘", or otherwise asks to sync/push/upload their daily Notion TIL to GitHub. This is a daily-habit automation for this specific repo and one specific Notion database — always use it end-to-end (fetch → convert → commit → push) rather than doing only part of the workflow, unless the user asks for just one step.
+description: 노션 "TIL" 데이터베이스에서 오늘(또는 지정한 날짜)의 TIL 항목을 가져와, 아래 정해진 폴더/파일/커밋 규칙에 맞춰 이 저장소에 md 파일로 업로드한다. "TIL 업로드", "오늘 TIL 올려줘", "노션 TIL 커밋", "TIL 깃허브에 올려줘" 등 노션 TIL을 GitHub에 동기화/업로드/커밋해달라는 요청이면 항상 이 스킬을 사용한다. 이 저장소와 특정 노션 데이터베이스 하나에 대한 매일 반복되는 습관을 자동화하는 스킬이므로, 사용자가 특정 단계 하나만 요청한 게 아니라면 항상 (가져오기 → 변환 → 커밋 → 푸시) 전체 과정을 한 번에 수행한다.
 ---
 
-# Notion TIL → GitHub Upload
+# 노션 TIL → GitHub 업로드
 
-Automates the daily habit of taking a Notion TIL ("Today I Learned") entry and turning it into a committed, pushed markdown file in this repo. This skill exists because the user does this every day and the rules below (folder layout, callout formatting, commit message) were worked out together with them — follow them exactly rather than improvising a different structure, since consistency across ~4 months of daily entries is the whole point.
+노션의 TIL(Today I Learned) 항목을 가져와 이 저장소에 커밋하고 푸시까지 완료하는 매일의 작업을 자동화한다. 아래 규칙(폴더 구조, 콜아웃 변환, 커밋 메시지)은 사용자와 함께 정한 것이므로, 임의로 다른 구조를 시도하지 말고 그대로 따른다. 약 4개월간 매일 쌓이는 기록이 일관된 형태를 유지하는 것이 이 규칙의 핵심 목적이다.
 
-## Fixed facts about this setup
+## 이 환경에 대한 고정 정보
 
-- **Notion data source**: `collection://3a5e7e8f-dd12-802e-8f87-000bd00b4c62` (the "TIL" data source). Each row/page is titled with its date, e.g. `2026-07-27`.
-- **This repo**: tracks `origin/main` at `https://github.com/hm1n/CAREER-CAMP-TIL.git`. Run all git commands from the repo root (the directory containing this `.claude/` folder).
-- **Camp start date**: 2026-07-22, which is **Week01, Day1**. The camp runs weekdays only (Mon–Fri); a new week folder begins every Monday, even if the previous week was a short/partial week (the first week is partial since it starts on a Wednesday).
+- **노션 데이터 소스**: `collection://3a5e7e8f-dd12-802e-8f87-000bd00b4c62` ("TIL" 데이터 소스). 각 페이지의 제목은 날짜 그 자체다 (예: `2026-07-27`).
+- **이 저장소**: `https://github.com/hm1n/CAREER-CAMP-TIL.git`의 `origin/main`을 추적한다. git 명령어는 이 `.claude/` 폴더가 있는 저장소 루트에서 실행한다.
+- **캠프 시작일**: 2026-07-22, 즉 **1주차(Week01) 1일째**다. 캠프는 평일(월~금)에만 진행되며, 새 주는 항상 월요일에 시작된다 — 첫 주가 수요일부터 시작하는 짧은 주였더라도 마찬가지로, 그 다음 월요일부터는 새 주차 폴더로 넘어간다.
 
-## Step 1 — Fetch the Notion entry
+## 1단계 — 노션 항목 가져오기
 
-1. Figure out the target date. Default to today's date (from the current session's date context). If the user names a different date, use that instead.
-2. Use `notion-query-data-sources` (SQL mode) against the data source above to find the page whose title/date matches the target date, or use `notion-search`/`notion-fetch` directly if you already know the page URL from a prior conversation turn.
-3. Fetch the full page with `notion-fetch`. If no page exists for that date yet, tell the user and stop — don't fabricate content.
+1. 대상 날짜를 정한다. 기본값은 오늘 날짜(현재 세션의 날짜 컨텍스트 기준)이며, 사용자가 다른 날짜를 지정하면 그 날짜를 사용한다.
+2. 위 데이터 소스에 대해 `notion-query-data-sources`(SQL 모드)로 대상 날짜와 제목이 일치하는 페이지를 찾거나, 이전 대화에서 이미 페이지 URL을 알고 있다면 `notion-search`/`notion-fetch`를 바로 사용한다.
+3. `notion-fetch`로 페이지 전체 내용을 가져온다. 해당 날짜의 페이지가 아직 없다면 사용자에게 알리고 멈춘다 — 내용을 임의로 지어내지 않는다.
 
-## Step 2 — Convert to markdown
+## 2단계 — 마크다운으로 변환
 
-Build the file content from the page's `<content>` block:
+페이지의 `<content>` 블록을 기준으로 파일 내용을 구성한다.
 
-1. **First line**: `# YYYY-MM-DD` (just the date, not the "✒️" emoji Notion adds to its own H2).
-2. **Section headers** become `## 섹션명`, keeping the section's own name as written in Notion (typically 오늘 배운 내용, 더 알아보고 싶은 것, 나에게 적용한다면, 한 줄 회고 — but carry over whatever sections actually exist that day, e.g. an extra "오늘의 아이디어" section, rather than assuming a fixed list).
-3. **Callout blocks → h4 with icon prefix.** Notion callouts (`<callout icon="...">text</callout>`) represent one bite-sized point. Convert each to a heading of the form:
+1. **첫 줄**: `# YYYY-MM-DD` (노션이 자체 H2에 붙이는 "✒️" 이모지는 제외).
+2. **섹션 헤더**는 `## 섹션명`으로 바꾸되, 노션에 적힌 섹션 이름을 그대로 유지한다 (보통 오늘 배운 내용, 더 알아보고 싶은 것, 나에게 적용한다면, 한 줄 회고 순서지만, "오늘의 아이디어"처럼 그날그날 추가로 있는 섹션이 있다면 고정된 목록으로 가정하지 말고 실제 있는 섹션을 그대로 반영한다).
+3. **콜아웃 블록 → 아이콘이 붙은 h4.** 노션 콜아웃(`<callout icon="...">텍스트</callout>`)은 한 덩어리의 짧은 포인트를 나타낸다. 각 콜아웃을 다음 형식의 헤딩으로 바꾼다.
    ```
-   #### <icon> <callout text>
+   #### <아이콘> <콜아웃 텍스트>
    ```
-   followed by a blank line, then the paragraph(s) that follow the callout in Notion (up to the next callout or section header) as normal body text below it. If a callout has no following body text (common in the "나에게 적용한다면" section, where callouts are often just short idea titles with nothing after them), just emit the heading with no body paragraph — don't invent a body.
-   - Known icon-to-section pairing so far: 📌 for 오늘 배운 내용, ❓ for 더 알아보고 싶은 것, 💡 for 나에게 적용한다면. But always use whatever icon is actually on the callout in Notion — don't hardcode the icon by section name, since that's just been the pattern, not a rule Notion enforces.
-4. **한 줄 회고** is a plain blockquote (`> ...`), not a callout — leave it as `> text` under its `##` header. If it's empty (no reflection written yet for today), leave `>` with nothing after it rather than skipping the section.
-5. Clean up Notion-specific markdown artifacts that shouldn't leak into the file:
-   - Escaped characters like `\~` → `~`.
-   - `<br>` inside blockquotes → a real line break (a new `> ` line).
-   - `<mention-page url="...">` references → drop them or replace with plain text if the mentioned page's title is obvious from context; don't leave raw Notion mention tags in the output.
-   - Notion's occasional double-bold artifacts around inline code (e.g. `**\`상황\`**** **`) → normalize to a single `**상황**` bold wrapper around the label.
+   그다음 빈 줄을 하나 두고, 노션에서 그 콜아웃 뒤에(다음 콜아웃이나 섹션 헤더가 나오기 전까지) 이어지는 본문 단락을 일반 텍스트로 그 아래에 넣는다. 콜아웃 뒤에 이어지는 본문이 없다면(“나에게 적용한다면” 섹션처럼 콜아웃이 짧은 아이디어 제목만 있고 뒤에 아무 내용이 없는 경우가 흔하다) 헤딩만 넣고 본문을 임의로 만들어내지 않는다.
+   - 지금까지 관찰된 아이콘-섹션 매칭: 📌는 오늘 배운 내용, ❓는 더 알아보고 싶은 것, 💡는 나에게 적용한다면. 다만 이는 노션이 강제하는 규칙이 아니라 지금까지의 패턴일 뿐이므로, 항상 노션 콜아웃에 실제로 붙어 있는 아이콘을 그대로 사용하고 섹션 이름만 보고 아이콘을 임의로 고정하지 않는다.
+4. **한 줄 회고**는 콜아웃이 아니라 일반 인용문(blockquote)이다 — `##` 헤더 아래에 `> 텍스트` 형태로 그대로 둔다. 그날 아직 회고를 작성하지 않아 비어 있다면, 섹션 자체를 생략하지 말고 `>` 만 남겨둔다.
+5. 파일에 남으면 안 되는 노션 전용 마크다운 잔재를 정리한다.
+   - `\~` 같은 이스케이프 문자 → `~`.
+   - blockquote 안의 `<br>` → 실제 줄바꿈(새로운 `> ` 줄).
+   - `<mention-page url="...">` 참조 → 제거하거나, 문맥상 언급된 페이지 제목이 명확하면 일반 텍스트로 바꾼다. 원본 노션 mention 태그를 그대로 남기지 않는다.
+   - 인라인 코드 주변에 가끔 나타나는 노션의 이중 볼드 잔재(예: `**\`상황\`**** **`) → `**상황**`처럼 하나의 볼드로 정리한다.
 
-## Step 3 — Place the file in the right week folder
+## 3단계 — 올바른 주차 폴더에 파일 배치
 
-Compute the week folder like this:
-1. Find the Monday of the calendar week containing the **camp start date** (2026-07-22 → Monday 2026-07-20). Call this `week1Monday`.
-2. Find the Monday of the calendar week containing the **target date**. Call this `targetMonday`.
-3. `weekNumber = floor((targetMonday - week1Monday) / 7 days) + 1`. Zero-pad to two digits (`Week01`, `Week02`, ...).
-4. The file goes at `WeekNN/YYYY-MM-DD.md` inside the repo root.
+주차 폴더는 다음과 같이 계산한다.
 
-(Sanity check against known data: 2026-07-22/23/24 → Week01; 2026-07-27 → Week02, since 07-27 is the next Monday after the partial first week.)
+1. **캠프 시작일**(2026-07-22)이 속한 주의 월요일을 구한다 → 2026-07-20. 이를 `week1Monday`라고 한다.
+2. **대상 날짜**가 속한 주의 월요일을 구한다. 이를 `targetMonday`라고 한다.
+3. `weekNumber = floor((targetMonday - week1Monday) / 7일) + 1`. 두 자리로 0을 채운다 (`Week01`, `Week02`, ...).
+4. 파일은 저장소 루트 기준 `WeekNN/YYYY-MM-DD.md`에 위치한다.
 
-If a file already exists at that path, **ask the user before overwriting it** — don't silently clobber a day's entry, since it may contain edits made after the last sync (like the 한 줄 회고 that gets filled in later in the day).
+(검증: 2026-07-22/23/24 → Week01, 2026-07-27 → Week02. 07-27이 첫 번째 짧은 주 다음에 오는 월요일이기 때문.)
 
-## Step 4 — Commit
+해당 경로에 이미 파일이 있다면, **덮어쓰기 전에 반드시 사용자에게 먼저 확인한다** — 마지막 동기화 이후에 내용이 추가됐을 수 있으므로(예: 하루가 끝날 무렵에 채워지는 한 줄 회고) 조용히 덮어쓰지 않는다.
 
-The commit convention here is fixed and non-negotiable (the user set this deliberately so the repo history reads as one line per day):
+## 4단계 — 커밋
 
-- Stage **only** the one new/updated markdown file — never bundle multiple days or unrelated changes into one commit.
-- Commit message is **exactly** `YYYY-MM-DD TIL 업로드` (the target date, a space, then the literal text "TIL 업로드"). No prefix, no scope, no extra description.
-- If other unrelated files happen to be modified in the working tree (e.g. README changes from an earlier session), leave them uncommitted — they're out of scope for this skill. Only touch what this run produced.
+이 저장소의 커밋 규칙은 고정이며 예외를 두지 않는다 (커밋 히스토리가 하루에 한 줄로 읽히도록 사용자가 의도적으로 정한 규칙이다).
+
+- 새로 만들거나 수정한 md 파일 **하나만** 스테이징한다 — 여러 날짜나 관련 없는 변경사항을 한 커밋에 묶지 않는다.
+- 커밋 메시지는 **정확히** `YYYY-MM-DD TIL 업로드` 형식이다(대상 날짜 + 공백 + "TIL 업로드" 문자열 그대로). 접두어, 스코프, 추가 설명을 붙이지 않는다.
+- 작업 트리에 관련 없는 다른 파일 변경사항이 있다면(예: 이전 세션에서 남은 README 수정사항) 그대로 커밋하지 않고 둔다. 이번 실행으로 만든 파일만 다룬다.
 
 ```bash
 git add "Week<NN>/<date>.md"
 git commit -m "<date> TIL 업로드"
 ```
 
-## Step 5 — Push
+## 5단계 — 푸시
 
-Push to `origin main`:
+`origin main`에 푸시한다.
 
 ```bash
 git push origin main
 ```
 
-This repo and this exact push (today's single TIL commit to the user's own personal repo) is what the user built this skill to automate — proceed with the push as part of the normal flow without pausing to ask "should I push?" each time, the same way the rest of the pipeline doesn't pause after every step. Do still surface a short confirmation of what happened afterward (date, file path, commit hash, push result) so the user can see it landed correctly. If `git push` fails (e.g. remote has diverged, network issue, author identity not configured in a fresh environment), stop and report the actual error rather than retrying blindly or force-pushing.
+이 저장소로의 이 푸시(오늘의 TIL 커밋 하나를 사용자 본인 개인 저장소에 올리는 것) 자체가 이 스킬을 만든 목적이므로, 파이프라인의 다른 단계들과 마찬가지로 매번 "푸시할까요?"라고 묻지 않고 바로 진행한다. 다만 이후에 무슨 일이 일어났는지(날짜, 파일 경로, 커밋 해시, 푸시 성공 여부)는 짧게 알려준다. `git push`가 실패하면(예: 원격과 히스토리가 갈라짐, 네트워크 문제, 새 환경이라 git 사용자 정보가 설정되어 있지 않음 등) 무작정 재시도하거나 force push하지 말고 실제 에러를 그대로 보고하고 멈춘다.
 
-## End-to-end summary
+## 전체 흐름 요약
 
-Given a date (default: today), this skill should go from "nothing" to "a correctly-formatted, correctly-placed, correctly-committed, and pushed markdown file" in one pass, and then report back concisely: which file was created, which week folder it landed in, the commit message used, and confirmation the push succeeded.
+날짜(기본값: 오늘)가 주어지면, 이 스킬은 한 번의 실행으로 "아무것도 없는 상태"에서 "형식이 올바르고, 올바른 위치에 있으며, 올바르게 커밋되고 푸시까지 완료된 마크다운 파일"까지 도달해야 한다. 완료 후에는 어떤 파일이 만들어졌는지, 어느 주차 폴더에 들어갔는지, 어떤 커밋 메시지를 썼는지, 푸시가 성공했는지를 간결하게 보고한다.
